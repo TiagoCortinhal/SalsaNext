@@ -18,6 +18,7 @@ from common.sync_batchnorm.batchnorm import convert_model
 from common.warmupLR import *
 from tasks.semantic.modules.ioueval import *
 from tasks.semantic.modules.segmentator import *
+from tasks.semantic.modules.Lovasz_Softmax import Lovasz_softmax
 
 def heteroscedastic_loss(true, mean, log_var):
     precision = torch.exp(-log_var)
