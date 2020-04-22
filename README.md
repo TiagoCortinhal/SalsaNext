@@ -66,12 +66,19 @@ To train/eval you can use the following scripts:
  
  ### References 
 [1] E. E. Aksoy, S. Baci, and S. Cavdar, “Salsanet: Fast road and vehicle segmentation in lidar point clouds for autonomous driving,” CoRR, 2019. [Online]. Available: http://arxiv.org/abs/1909.08291
+
 [2] M. Berman, A. Rannen Triki, and M. B. Blaschko, “The lova ́sz- softmax loss: A tractable surrogate for the optimization of the intersection-over-union measure in neural networks,” in CVPR, 2018, pp. 4413–4421.
+
 [3] J. Behley, M. Garbade, A. Milioto, J. Quenzel, S. Behnke, C. Stach- niss, and J. Gall, “SemanticKITTI: A Dataset for Semantic Scene Understanding of LiDAR Sequences,” in ICCV, 2019.
+
 [4] A. Kendall, V. Badrinarayanan, and R. Cipolla, “Bayesian segnet: Model uncertainty in deep convolutional encoder-decoder architectures for scene understanding,” arXiv preprint arXiv:1511.02680, 2015.
+
 [5] R. P. K. Poudel, S. Liwicki, and R. Cipolla, “Fast-scnn: Fast semantic segmentation network,” CoRR, vol. abs/1902.04502, 2019. [Online]. Available: http://arxiv.org/abs/1902.04502
+
 [6] B. Wu, A. Wan, X. Yue, and K. Keutzer, “Squeezeseg: Convolutional neural nets with recurrent crf for real-time road-object segmentation from 3d lidar point cloud,” ICRA, 2018.
+
 [7] A. Milioto, I. Vizzo, J. Behley, and C. Stachniss, “RangeNet++: Fast and Accurate LiDAR Semantic Segmentation,” in IROS, 2019.
+
 [8] Y. Guo, H. Wang, Q. Hu, H. Liu, L. Liu, and M. Bennamoun, “Deep learning for 3d point clouds: A survey,” CoRR, 2019. [Online]. Available: https://arxiv.org/abs/1912.12033
  
  
