@@ -1,5 +1,5 @@
 # SalsaNext
-
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/salsanext-fast-semantic-segmentation-of-lidar/3d-semantic-segmentation-on-semantickitti)](https://paperswithcode.com/sota/3d-semantic-segmentation-on-semantickitti?p=salsanext-fast-semantic-segmentation-of-lidar)
 
 First create the anaconda env with:
 ```conda env create -f salsanext.yml``` then activate the environment with ```conda activate salsanext```.
