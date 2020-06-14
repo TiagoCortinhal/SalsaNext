@@ -3,18 +3,25 @@
 import time
 
 import numpy as np
-
+import math
+import random
+from scipy.spatial.transform import Rotation as R
 
 class LaserScan:
     """Class that contains LaserScan with x,y,z,r"""
     EXTENSIONS_SCAN = ['.bin']
 
-    def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0):
+    def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0,DA=False,flip_sign=False,rot=False,drop_points=False):
         self.project = project
         self.proj_H = H
         self.proj_W = W
         self.proj_fov_up = fov_up
         self.proj_fov_down = fov_down
+        self.DA = DA
+        self.flip_sign = flip_sign
+        self.rot = rot
+        self.drop_points = drop_points
+
         self.reset()
 
     def reset(self):
@@ -79,6 +86,11 @@ class LaserScan:
         # put in attribute
         points = scan[:, 0:3]  # get xyz
         remissions = scan[:, 3]  # get remission
+        if self.drop_points is not False:
+            self.points_to_drop = np.random.randint(0, len(points)-1,int(len(points)*self.drop_points))
+            points = np.delete(points,self.points_to_drop,axis=0)
+            remissions = np.delete(remissions,self.points_to_drop)
+
         self.set_points(points, remissions)
 
     def set_points(self, points, remissions=None):
@@ -96,9 +108,22 @@ class LaserScan:
             raise TypeError("Remissions should be numpy array")
 
         # put in attribute
-        self.points = points  # get xyz
+        self.points = points  # get
+        if self.flip_sign:
+            self.points[:, 1] = -self.points[:, 1]
+        if self.DA:
+            jitter_x = random.uniform(-5,5)
+            jitter_y = random.uniform(-3, 3)
+            jitter_z = random.uniform(-1, 0)
+            self.points[:, 0] += jitter_x
+            self.points[:, 1] += jitter_y
+            self.points[:, 2] += jitter_z
+        if self.rot:
+            self.points = self.points @ R.random(random_state=1234).as_dcm().T
         if remissions is not None:
             self.remissions = remissions  # get remission
+            #if self.DA:
+            #    self.remissions = self.remissions[::-1].copy()
         else:
             self.remissions = np.zeros((points.shape[0]), dtype=np.float32)
 
@@ -173,8 +198,8 @@ class SemLaserScan(LaserScan):
     """Class that contains LaserScan with x,y,z,r,sem_label,sem_color_label,inst_label,inst_color_label"""
     EXTENSIONS_LABEL = ['.label']
 
-    def __init__(self, sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, max_classes=300):
-        super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down)
+    def __init__(self, sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, max_classes=300,DA=False,flip_sign=False,drop_points=False):
+        super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down,DA=DA,flip_sign=flip_sign,drop_points=drop_points)
         self.reset()
 
         # make semantic colors
@@ -244,6 +269,8 @@ class SemLaserScan(LaserScan):
         label = np.fromfile(filename, dtype=np.int32)
         label = label.reshape((-1))
 
+        if self.drop_points is not False:
+            label = np.delete(label,self.points_to_drop)
         # set it
         self.set_label(label)
 

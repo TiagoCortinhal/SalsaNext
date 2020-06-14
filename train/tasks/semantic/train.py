@@ -11,7 +11,38 @@ import yaml
 from tasks.semantic.modules.trainer import *
 from pip._vendor.distlib.compat import raw_input
 
+from tasks.semantic.modules.SalsaNextUncertainty import *
+from tasks.semantic.modules.SalsaNext import *
 #from tasks.semantic.modules.save_dataset_projected import *
+import math
+from decimal import Decimal
+
+def remove_exponent(d):
+    return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
+
+def millify(n, precision=0, drop_nulls=True, prefixes=[]):
+    millnames = ['', 'k', 'M', 'B', 'T', 'P', 'E', 'Z', 'Y']
+    if prefixes:
+        millnames = ['']
+        millnames.extend(prefixes)
+    n = float(n)
+    millidx = max(0, min(len(millnames) - 1,
+                         int(math.floor(0 if n == 0 else math.log10(abs(n)) / 3))))
+    result = '{:.{precision}f}'.format(n / 10**(3 * millidx), precision=precision)
+    if drop_nulls:
+        result = remove_exponent(Decimal(result))
+    return '{0}{dx}'.format(result, dx=millnames[millidx])
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean expected')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("./train.py")
@@ -54,27 +85,29 @@ if __name__ == '__main__':
         help='Directory to get the pretrained model. If not passed, do from scratch!'
     )
     parser.add_argument(
-        '--model', '-m',
-        type=str,
-        required=True,
-        default=None,
-        help='Which model to train'
+        '--uncertainty', '-u',
+        type=str2bool, nargs='?',
+        const=True, default=False,
+        help='Set this if you want to use the Uncertainty Version'
     )
 
     FLAGS, unparsed = parser.parse_known_args()
     FLAGS.log = FLAGS.log + '/logs/' + datetime.datetime.now().strftime("%Y-%-m-%d-%H:%M") + FLAGS.name
-
-    if FLAGS.model not in ('salsanet','salsanext','rangenet'):
-        print("Flags model:",FLAGS.model)
-        raise NotImplementedError('you need to chose between: salsanet, salsanext or rangenet')
+    if FLAGS.uncertainty:
+        params = SalsaNextUncertainty(20)
+        pytorch_total_params = sum(p.numel() for p in params.parameters() if p.requires_grad)
+    else:
+        params = SalsaNext(20)
+        pytorch_total_params = sum(p.numel() for p in params.parameters() if p.requires_grad)
     # print summary of what we will do
     print("----------")
     print("INTERFACE:")
     print("dataset", FLAGS.dataset)
     print("arch_cfg", FLAGS.arch_cfg)
     print("data_cfg", FLAGS.data_cfg)
+    print("uncertainty", FLAGS.uncertainty)
+    print("Total of Trainable Parameters: {}".format(millify(pytorch_total_params,2)))
     print("log", FLAGS.log)
-    print("Model", FLAGS.model)
     print("pretrained", FLAGS.pretrained)
     print("----------\n")
     # print("Commit hash (training version): ", str(
@@ -140,6 +173,5 @@ if __name__ == '__main__':
         quit()
 
     # create trainer and start the training
-    trainer = Trainer(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.pretrained,FLAGS.model)
+    trainer = Trainer(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.pretrained,FLAGS.uncertainty)
     trainer.train()
-    #trainer = SaveDataSet(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.pretrained)

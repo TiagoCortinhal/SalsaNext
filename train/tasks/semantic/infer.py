@@ -11,6 +11,15 @@ import shutil
 import __init__ as booger
 
 from tasks.semantic.modules.user import *
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean expected')
 
 if __name__ == '__main__':
     splits = ["train", "valid", "test"]
@@ -37,17 +46,23 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        '--model_name', '-n',
-        type=str,
-        required=True,
-        default='salsanext'
+        '--uncertainty', '-u',
+        type=str2bool, nargs='?',
+        const=True, default=False,
+        help='Set this if you want to use the Uncertainty Version'
     )
+
+    parser.add_argument(
+        '--monte-carlo', '-c',
+        type=int, default=30,
+        help='Number of samplings per scan'
+    )
+
 
     parser.add_argument(
         '--split', '-s',
         type=str,
         required=False,
-        choices=["train", "valid", "test"],
         default=None,
         help='Split to evaluate on. One of ' +
              str(splits) + '. Defaults to %(default)s',
@@ -60,6 +75,8 @@ if __name__ == '__main__':
     print("dataset", FLAGS.dataset)
     print("log", FLAGS.log)
     print("model", FLAGS.model)
+    print("Uncertainty", FLAGS.uncertainty)
+    print("Monte Carlo Sampling", FLAGS.mc)
     print("infering", FLAGS.split)
     print("----------\n")
     #print("Commit hash (training version): ", str(
@@ -123,6 +140,5 @@ if __name__ == '__main__':
         quit()
 
     # create user and infer dataset
-    print(FLAGS.model_name)
-    user = User(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.model,FLAGS.model_name,FLAGS.split)
+    user = User(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.model,FLAGS.split,FLAGS.uncertainty,FLAGS.mc)
     user.infer()

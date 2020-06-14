@@ -17,10 +17,10 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
 """
-
+import torch
+import torch.nn as nn
 from torch.autograd import Variable
 
-from tasks.semantic.modules.segmentator import *
 
 try:
     from itertools import ifilterfalse

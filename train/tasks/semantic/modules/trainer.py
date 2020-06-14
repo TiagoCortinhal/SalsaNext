@@ -17,8 +17,10 @@ from common.logger import Logger
 from common.sync_batchnorm.batchnorm import convert_model
 from common.warmupLR import *
 from tasks.semantic.modules.ioueval import *
-from tasks.semantic.modules.segmentator import *
+from tasks.semantic.modules.SalsaNext import *
+from tasks.semantic.modules.SalsaNextUncertainty import *
 from tasks.semantic.modules.Lovasz_Softmax import Lovasz_softmax
+
 
 def heteroscedastic_loss(true, mean, log_var):
     precision = torch.exp(-log_var)
@@ -37,18 +39,18 @@ def save_to_log(logdir, logfile, message):
 def save_checkpoint(to_save, logdir, suffix=""):
     # Save the weights
     torch.save(to_save, logdir +
-               "/SalsaNet" + suffix)
+               "/SalsaNext" + suffix)
 
 
 class Trainer():
-    def __init__(self, ARCH, DATA, datadir, logdir, path=None, model_mode='salsanext'):
+    def __init__(self, ARCH, DATA, datadir, logdir, path=None,uncertainty=False):
         # parameters
         self.ARCH = ARCH
         self.DATA = DATA
         self.datadir = datadir
         self.log = logdir
         self.path = path
-        self.model_mode = model_mode
+        self.uncertainty = uncertainty
 
         self.batch_time_t = AverageMeter()
         self.data_time_t = AverageMeter()
@@ -87,7 +89,7 @@ class Trainer():
                                           shuffle_train=True)
 
         # weights for loss (and bias)
-        # weights for loss (and bias)
+
         epsilon_w = self.ARCH["train"]["epsilon_w"]
         content = torch.zeros(self.parser.get_n_classes(), dtype=torch.float)
         for cl, freq in DATA["content"].items():
@@ -99,24 +101,20 @@ class Trainer():
                 # don't weigh
                 self.loss_w[x_cl] = 0
         print("Loss weights from content: ", self.loss_w.data)
-        # concatenate the encoder and the head
-        with torch.no_grad():
-            self.model = SalsaNet(self.ARCH,
-                                  self.parser.get_n_classes(),
-                                  self.path)
 
-        self.tb_logger = Logger(self.log + "/tb", self.model)
+        with torch.no_grad():
+            if not self.uncertainty:
+                self.model = SalsaNext(self.parser.get_n_classes())
+            else:
+                self.model = SalsaNextUncertainty(self.parser.get_n_classes())
+
+        self.tb_logger = Logger(self.log + "/tb")
 
         # GPU?
         self.gpu = False
         self.multi_gpu = False
         self.n_gpus = 0
         self.model_single = self.model
-        pytorch_total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                print("{}: {:,}".format(name, param.numel()))
-        print("Total of Trainable Parameters: {:,}".format(pytorch_total_params))
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Training in device: ", self.device)
         if torch.cuda.is_available() and torch.cuda.device_count() > 0:
@@ -158,7 +156,7 @@ class Trainer():
 
         if self.path is not None:
             torch.nn.Module.dump_patches = True
-            w_dict = torch.load(path + "/SalsaNet",
+            w_dict = torch.load(path + "/SalsaNext",
                                 map_location=lambda storage, loc: storage)
             self.model.load_state_dict(w_dict['state_dict'], strict=True)
             self.optimizer.load_state_dict(w_dict['optimizer'])
@@ -238,13 +236,9 @@ class Trainer():
 
         # train for n epochs
         for epoch in range(self.epoch, self.ARCH["train"]["max_epochs"]):
-            # get info for learn rate currently
-            # groups = self.optimizer.param_groups()
-            # for name, g in zip(self.lr_group_names, groups):
-            #     self.info[name] = g['lr']
 
             # train for 1 epoch
-            acc, iou, loss, update_mean = self.train_epoch(train_loader=self.parser.get_train_set(),
+            acc, iou, loss, update_mean,hetero_l = self.train_epoch(train_loader=self.parser.get_train_set(),
                                                            model=self.model,
                                                            criterion=self.criterion,
                                                            optimizer=self.optimizer,
@@ -260,6 +254,7 @@ class Trainer():
             self.info["train_loss"] = loss
             self.info["train_acc"] = acc
             self.info["train_iou"] = iou
+            self.info["train_hetero"] = hetero_l
 
             # remember best iou and save checkpoint
             state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
@@ -282,7 +277,7 @@ class Trainer():
             if epoch % self.ARCH["train"]["report_epoch"] == 0:
                 # evaluate on validation set
                 print("*" * 80)
-                acc, iou, loss, rand_img = self.validate(val_loader=self.parser.get_valid_set(),
+                acc, iou, loss, rand_img,hetero_l = self.validate(val_loader=self.parser.get_valid_set(),
                                                          model=self.model,
                                                          criterion=self.criterion,
                                                          evaluator=self.evaluator,
@@ -294,6 +289,7 @@ class Trainer():
                 self.info["valid_loss"] = loss
                 self.info["valid_acc"] = acc
                 self.info["valid_iou"] = iou
+                self.info['valid_heteros'] = hetero_l
 
             # remember best iou and save checkpoint
             if self.info['valid_iou'] > self.info['best_val_iou']:
@@ -330,6 +326,7 @@ class Trainer():
         losses = AverageMeter()
         acc = AverageMeter()
         iou = AverageMeter()
+        hetero_l = AverageMeter()
         update_ratio_meter = AverageMeter()
 
         # empty the cache to train now
@@ -350,19 +347,28 @@ class Trainer():
                 proj_labels = proj_labels.cuda().long()
 
             # compute output
-            output = model(in_vol)
-            loss = criterion(torch.log(output.clamp(min=1e-8)), proj_labels) + self.ls(output, proj_labels.long())
+            if self.uncertainty:
+                log_var, output, reg = model(in_vol)
+                mean = output.argmax(dim=1)
+                log_var = log_var.mean(dim=1)
+                hetero = heteroscedastic_loss(proj_labels.float(), mean.float(), log_var.float()).mean()
+                loss_m = criterion(torch.log(output.clamp(min=1e-8)), proj_labels) + hetero + self.ls(output, proj_labels.long()) + reg
+
+                hetero_l.update(hetero.mean().item(), in_vol.size(0))
+            else:
+                output = model(in_vol)
+                loss_m = criterion(torch.log(output.clamp(min=1e-8)), proj_labels) + self.ls(output, proj_labels.long())
 
             optimizer.zero_grad()
             if self.n_gpus > 1:
                 idx = torch.ones(self.n_gpus).cuda()
-                loss.backward(idx)
+                loss_m.backward(idx)
             else:
-                loss.backward()
+                loss_m.backward()
             optimizer.step()
 
             # measure accuracy and record loss
-            loss = loss.mean()
+            loss = loss_m.mean()
             with torch.no_grad():
                 evaluator.reset()
                 argmax = output.argmax(dim=1)
@@ -411,36 +417,64 @@ class Trainer():
                 out = np.concatenate([out, out2], axis=0)
                 cv2.imshow("sample_training", out)
                 cv2.waitKey(1)
+            if self.uncertainty:
 
-            if i % self.ARCH["train"]["report_batch"] == 0:
-                print('Lr: {lr:.3e} | '
-                      'Update: {umean:.3e} mean,{ustd:.3e} std | '
-                      'Epoch: [{0}][{1}/{2}] | '
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
-                      'Data {data_time.val:.3f} ({data_time.avg:.3f}) | '
-                      'Loss {loss.val:.4f} ({loss.avg:.4f}) | '
-                      'acc {acc.val:.3f} ({acc.avg:.3f}) | '
-                      'IoU {iou.val:.3f} ({iou.avg:.3f}) | [{estim}]'.format(
-                    epoch, i, len(train_loader), batch_time=self.batch_time_t,
-                    data_time=self.data_time_t, loss=losses, acc=acc, iou=iou, lr=lr,
-                    umean=update_mean, ustd=update_std, estim=self.calculate_estimate(epoch, i)))
+                if i % self.ARCH["train"]["report_batch"] == 0:
+                    print( 'Lr: {lr:.3e} | '
+                          'Update: {umean:.3e} mean,{ustd:.3e} std | '
+                          'Epoch: [{0}][{1}/{2}] | '
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
+                          'Data {data_time.val:.3f} ({data_time.avg:.3f}) | '
+                          'Loss {loss.val:.4f} ({loss.avg:.4f}) | '
+                          'Hetero {hetero_l.val:.4f} ({hetero_l.avg:.4f}) | '
+                          'acc {acc.val:.3f} ({acc.avg:.3f}) | '
+                          'IoU {iou.val:.3f} ({iou.avg:.3f}) | [{estim}]'.format(
+                        epoch, i, len(train_loader), batch_time=self.batch_time_t,
+                        data_time=self.data_time_t, loss=losses, hetero_l=hetero_l,acc=acc, iou=iou, lr=lr,
+                        umean=update_mean, ustd=update_std, estim=self.calculate_estimate(epoch, i)))
 
-                save_to_log(self.log, 'log.txt', 'Lr: {lr:.3e} | '
-                      'Update: {umean:.3e} mean,{ustd:.3e} std | '
-                      'Epoch: [{0}][{1}/{2}] | '
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
-                      'Data {data_time.val:.3f} ({data_time.avg:.3f}) | '
-                      'Loss {loss.val:.4f} ({loss.avg:.4f}) | '
-                      'acc {acc.val:.3f} ({acc.avg:.3f}) | '
-                      'IoU {iou.val:.3f} ({iou.avg:.3f}) | [{estim}]'.format(
-                    epoch, i, len(train_loader), batch_time=self.batch_time_t,
-                    data_time=self.data_time_t, loss=losses, acc=acc, iou=iou, lr=lr,
-                    umean=update_mean, ustd=update_std, estim=self.calculate_estimate(epoch, i)))
+                    save_to_log(self.log, 'log.txt', 'Lr: {lr:.3e} | '
+                          'Update: {umean:.3e} mean,{ustd:.3e} std | '
+                          'Epoch: [{0}][{1}/{2}] | '
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
+                          'Data {data_time.val:.3f} ({data_time.avg:.3f}) | '
+                          'Loss {loss.val:.4f} ({loss.avg:.4f}) | '
+                          'Hetero {hetero.val:.4f} ({hetero.avg:.4f}) | '
+                          'acc {acc.val:.3f} ({acc.avg:.3f}) | '
+                          'IoU {iou.val:.3f} ({iou.avg:.3f}) | [{estim}]'.format(
+                        epoch, i, len(train_loader), batch_time=self.batch_time_t,
+                        data_time=self.data_time_t, loss=losses, hetero=hetero_l,acc=acc, iou=iou, lr=lr,
+                        umean=update_mean, ustd=update_std, estim=self.calculate_estimate(epoch, i)))
+            else:
+                if i % self.ARCH["train"]["report_batch"] == 0:
+                    print('Lr: {lr:.3e} | '
+                          'Update: {umean:.3e} mean,{ustd:.3e} std | '
+                          'Epoch: [{0}][{1}/{2}] | '
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
+                          'Data {data_time.val:.3f} ({data_time.avg:.3f}) | '
+                          'Loss {loss.val:.4f} ({loss.avg:.4f}) | '
+                          'acc {acc.val:.3f} ({acc.avg:.3f}) | '
+                          'IoU {iou.val:.3f} ({iou.avg:.3f}) | [{estim}]'.format(
+                        epoch, i, len(train_loader), batch_time=self.batch_time_t,
+                        data_time=self.data_time_t, loss=losses, acc=acc, iou=iou, lr=lr,
+                        umean=update_mean, ustd=update_std, estim=self.calculate_estimate(epoch, i)))
+
+                    save_to_log(self.log, 'log.txt', 'Lr: {lr:.3e} | '
+                                                     'Update: {umean:.3e} mean,{ustd:.3e} std | '
+                                                     'Epoch: [{0}][{1}/{2}] | '
+                                                     'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
+                                                     'Data {data_time.val:.3f} ({data_time.avg:.3f}) | '
+                                                     'Loss {loss.val:.4f} ({loss.avg:.4f}) | '
+                                                     'acc {acc.val:.3f} ({acc.avg:.3f}) | '
+                                                     'IoU {iou.val:.3f} ({iou.avg:.3f}) | [{estim}]'.format(
+                        epoch, i, len(train_loader), batch_time=self.batch_time_t,
+                        data_time=self.data_time_t, loss=losses, acc=acc, iou=iou, lr=lr,
+                        umean=update_mean, ustd=update_std, estim=self.calculate_estimate(epoch, i)))
 
             # step scheduler
             scheduler.step()
 
-        return acc.avg, iou.avg, losses.avg, update_ratio_meter.avg
+        return acc.avg, iou.avg, losses.avg, update_ratio_meter.avg,hetero_l.avg
 
     def validate(self, val_loader, model, criterion, evaluator, class_func, color_fn, save_scans):
         losses = AverageMeter()
@@ -448,6 +482,7 @@ class Trainer():
         wces = AverageMeter()
         acc = AverageMeter()
         iou = AverageMeter()
+        hetero_l = AverageMeter()
         rand_imgs = []
 
         # switch to evaluate mode
@@ -468,17 +503,30 @@ class Trainer():
                     proj_labels = proj_labels.cuda(non_blocking=True).long()
 
                 # compute output
-                output = model(in_vol)
-                log_out = torch.log(output.clamp(min=1e-8))
-                jacc = self.ls(output, proj_labels)
-                wce = criterion(log_out, proj_labels)
-                loss = wce + jacc
+                if self.uncertainty:
+                    log_var, output, _ = model(in_vol)
+                    log_out = torch.log(output.clamp(min=1e-8))
+                    mean = output.argmax(dim=1)
+                    log_var = log_var.mean(dim=1)
+                    hetero = heteroscedastic_loss(proj_labels.float(), mean.float(), log_var.float()).mean()
+                    jacc = self.ls(output, proj_labels)
+                    wce = criterion(log_out, proj_labels)
+                    loss = wce + jacc
+                    hetero_l.update(hetero.mean().item(), in_vol.size(0))
+                else:
+                    output = model(in_vol)
+                    log_out = torch.log(output.clamp(min=1e-8))
+                    jacc = self.ls(output, proj_labels)
+                    wce = criterion(log_out, proj_labels)
+                    loss = wce + jacc
 
                 # measure accuracy and record loss
                 argmax = output.argmax(dim=1)
                 evaluator.addBatch(argmax, proj_labels)
                 losses.update(loss.mean().item(), in_vol.size(0))
                 jaccs.update(jacc.mean().item(),in_vol.size(0))
+
+
                 wces.update(wce.mean().item(),in_vol.size(0))
 
 
@@ -504,35 +552,73 @@ class Trainer():
             jaccard, class_jaccard = evaluator.getIoU()
             acc.update(accuracy.item(), in_vol.size(0))
             iou.update(jaccard.item(), in_vol.size(0))
+            if self.uncertainty:
+                print('Validation set:\n'       
+                      'Time avg per batch {batch_time.avg:.3f}\n'
+                      'Loss avg {loss.avg:.4f}\n'
+                      'Jaccard avg {jac.avg:.4f}\n'
+                      'WCE avg {wces.avg:.4f}\n'
+                      'Hetero avg {hetero.avg}:.4f\n'
+                      'Acc avg {acc.avg:.3f}\n'
+                      'IoU avg {iou.avg:.3f}'.format(batch_time=self.batch_time_e,
+                                                     loss=losses,
+                                                     jac=jaccs,
+                                                     wces=wces,
+                                                     hetero=hetero_l,
+                                                     acc=acc, iou=iou))
 
-            print('Validation set:\n'
-                  'Time avg per batch {batch_time.avg:.3f}\n'
-                  'Loss avg {loss.avg:.4f}\n'
-                  'Jaccard avg {jac.avg:.4f}\n'
-                  'WCE avg {wces.avg:.4f}\n'
-                  'Acc avg {acc.avg:.3f}\n'
-                  'IoU avg {iou.avg:.3f}'.format(batch_time=self.batch_time_e,
-                                                 loss=losses,
-                                                 jac=jaccs,
-                                                 wces=wces,
-                                                 acc=acc, iou=iou))
+                save_to_log(self.log, 'log.txt', 'Validation set:\n'
+                      'Time avg per batch {batch_time.avg:.3f}\n'
+                      'Loss avg {loss.avg:.4f}\n'
+                      'Jaccard avg {jac.avg:.4f}\n'
+                      'WCE avg {wces.avg:.4f}\n'
+                      'Hetero avg {hetero.avg}:.4f\n'
+                      'Acc avg {acc.avg:.3f}\n'
+                      'IoU avg {iou.avg:.3f}'.format(batch_time=self.batch_time_e,
+                                                     loss=losses,
+                                                     jac=jaccs,
+                                                     wces=wces,
+                                                     hetero=hetero_l,
+                                                     acc=acc, iou=iou))
+                # print also classwise
+                for i, jacc in enumerate(class_jaccard):
+                    print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+                        i=i, class_str=class_func(i), jacc=jacc))
+                    save_to_log(self.log, 'log.txt', 'IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+                        i=i, class_str=class_func(i), jacc=jacc))
+                    self.info["valid_classes/"+class_func(i)] = jacc
+            else:
 
-            save_to_log(self.log, 'log.txt', 'Validation set:\n'
-                  'Time avg per batch {batch_time.avg:.3f}\n'
-                  'Loss avg {loss.avg:.4f}\n'
-                  'Jaccard avg {jac.avg:.4f}\n'
-                  'WCE avg {wces.avg:.4f}\n'
-                  'Acc avg {acc.avg:.3f}\n'
-                  'IoU avg {iou.avg:.3f}'.format(batch_time=self.batch_time_e,
-                                                 loss=losses,
-                                                 jac=jaccs,
-                                                 wces=wces,
-                                                 acc=acc, iou=iou))
-            # print also classwise
-            for i, jacc in enumerate(class_jaccard):
-                print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
-                    i=i, class_str=class_func(i), jacc=jacc))
-                save_to_log(self.log, 'log.txt', 'IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
-                    i=i, class_str=class_func(i), jacc=jacc))
+                print('Validation set:\n'
+                      'Time avg per batch {batch_time.avg:.3f}\n'
+                      'Loss avg {loss.avg:.4f}\n'
+                      'Jaccard avg {jac.avg:.4f}\n'
+                      'WCE avg {wces.avg:.4f}\n'
+                      'Acc avg {acc.avg:.3f}\n'
+                      'IoU avg {iou.avg:.3f}'.format(batch_time=self.batch_time_e,
+                                                     loss=losses,
+                                                     jac=jaccs,
+                                                     wces=wces,
+                                                     acc=acc, iou=iou))
 
-        return acc.avg, iou.avg, losses.avg, rand_imgs
+                save_to_log(self.log, 'log.txt', 'Validation set:\n'
+                                                 'Time avg per batch {batch_time.avg:.3f}\n'
+                                                 'Loss avg {loss.avg:.4f}\n'
+                                                 'Jaccard avg {jac.avg:.4f}\n'
+                                                 'WCE avg {wces.avg:.4f}\n'
+                                                 'Acc avg {acc.avg:.3f}\n'
+                                                 'IoU avg {iou.avg:.3f}'.format(batch_time=self.batch_time_e,
+                                                                                loss=losses,
+                                                                                jac=jaccs,
+                                                                                wces=wces,
+                                                                                acc=acc, iou=iou))
+                # print also classwise
+                for i, jacc in enumerate(class_jaccard):
+                    print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+                        i=i, class_str=class_func(i), jacc=jacc))
+                    save_to_log(self.log, 'log.txt', 'IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+                        i=i, class_str=class_func(i), jacc=jacc))
+                    self.info["valid_classes/" + class_func(i)] = jacc
+
+
+        return acc.avg, iou.avg, losses.avg, rand_imgs, hetero_l.avg

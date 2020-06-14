@@ -13,10 +13,8 @@ except ImportError:
 
 class Logger(object):
 
-    def __init__(self, log_dir,model):
+    def __init__(self, log_dir):
         """Create a summary writer logging to log_dir."""
-        #self.writer = SummaryWriter(log_dir)
-        #self.writer.add_graph(model,torch.zeros(1,5,64,2048))
         self.writer = tf.summary.FileWriter(log_dir)
 
     def scalar_summary(self, tag, value, step):

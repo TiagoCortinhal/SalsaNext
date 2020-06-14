@@ -3,6 +3,22 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from common.laserscan import LaserScan, SemLaserScan
+import torchvision
+
+import torch
+import math
+import random
+from PIL import Image
+try:
+    import accimage
+except ImportError:
+    accimage = None
+import numpy as np
+import numbers
+import types
+from collections.abc import Sequence, Iterable
+import warnings
+
 
 EXTENSIONS_SCAN = ['.bin']
 EXTENSIONS_LABEL = ['.label']
@@ -16,6 +32,33 @@ def is_label(filename):
   return any(filename.endswith(ext) for ext in EXTENSIONS_LABEL)
 
 
+def my_collate(batch):
+    data = [item[0] for item in batch]
+    project_mask = [item[1] for item in batch]
+    proj_labels = [item[2] for item in batch]
+    data = torch.stack(data,dim=0)
+    project_mask = torch.stack(project_mask,dim=0)
+    proj_labels = torch.stack(proj_labels, dim=0)
+
+    to_augment =(proj_labels == 12).nonzero()
+    to_augment_unique_12 = torch.unique(to_augment[:, 0])
+
+    to_augment = (proj_labels == 5).nonzero()
+    to_augment_unique_5 = torch.unique(to_augment[:, 0])
+
+    to_augment = (proj_labels == 8).nonzero()
+    to_augment_unique_8 = torch.unique(to_augment[:, 0])
+
+    to_augment_unique = torch.cat((to_augment_unique_5,to_augment_unique_8,to_augment_unique_12),dim=0)
+    to_augment_unique = torch.unique(to_augment_unique)
+
+    for k in to_augment_unique:
+        data = torch.cat((data,torch.flip(data[k.item()], [2]).unsqueeze(0)),dim=0)
+        proj_labels = torch.cat((proj_labels,torch.flip(proj_labels[k.item()], [1]).unsqueeze(0)),dim=0)
+        project_mask = torch.cat((project_mask,torch.flip(project_mask[k.item()], [1]).unsqueeze(0)),dim=0)
+
+    return data, project_mask,proj_labels
+
 class SemanticKitti(Dataset):
 
   def __init__(self, root,    # directory where data is
@@ -26,7 +69,8 @@ class SemanticKitti(Dataset):
                learning_map_inv,    # inverse of previous (recover labels)
                sensor,              # sensor to parse scans from
                max_points=150000,   # max number of points present in dataset
-               gt=True):            # send ground truth?
+               gt=True,
+               transform=False):            # send ground truth?
     # save deats
     self.root = os.path.join(root, "sequences")
     self.sequences = sequences
@@ -45,6 +89,7 @@ class SemanticKitti(Dataset):
     self.sensor_fov_down = sensor["fov_down"]
     self.max_points = max_points
     self.gt = gt
+    self.transform = transform
 
     # get number of classes (can't be len(self.learning_map) because there
     # are multiple repeated entries, so the number that matters is how many
@@ -114,19 +159,40 @@ class SemanticKitti(Dataset):
       label_file = self.label_files[index]
 
     # open a semantic laserscan
+    DA = False
+    flip_sign = False
+    rot = False
+    drop_points = False
+    if self.transform:
+        if random.random() > 0.5:
+            if random.random() > 0.5:
+                DA = True
+            if random.random() > 0.5:
+                flip_sign = True
+            if random.random() > 0.5:
+                rot = True
+            drop_points = random.uniform(0, 0.5)
+
     if self.gt:
       scan = SemLaserScan(self.color_map,
                           project=True,
                           H=self.sensor_img_H,
                           W=self.sensor_img_W,
                           fov_up=self.sensor_fov_up,
-                          fov_down=self.sensor_fov_down)
+                          fov_down=self.sensor_fov_down,
+                          DA=DA,
+                          flip_sign=flip_sign,
+                          drop_points=drop_points)
     else:
       scan = LaserScan(project=True,
                        H=self.sensor_img_H,
                        W=self.sensor_img_W,
                        fov_up=self.sensor_fov_up,
-                       fov_down=self.sensor_fov_down)
+                       fov_down=self.sensor_fov_down,
+                       DA=DA,
+                       rot=rot,
+                       flip_sign=flip_sign,
+                       drop_points=drop_points)
 
     # open and obtain scan
     scan.open_scan(scan_file)
@@ -176,9 +242,6 @@ class SemanticKitti(Dataset):
     path_split = path_norm.split(os.sep)
     path_seq = path_split[-3]
     path_name = path_split[-1].replace(".bin", ".label")
-    # print("path_norm: ", path_norm)
-    # print("path_seq", path_seq)
-    # print("path_name", path_name)
 
     # return
     return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
@@ -260,6 +323,7 @@ class Parser():
                                        learning_map_inv=self.learning_map_inv,
                                        sensor=self.sensor,
                                        max_points=max_points,
+                                       transform=True,
                                        gt=self.gt)
 
     self.trainloader = torch.utils.data.DataLoader(self.train_dataset,
