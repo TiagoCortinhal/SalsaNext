@@ -72,7 +72,9 @@ To train/eval you can use the following scripts:
      
      
      
+### Disclamer
 
+We based our code on [RangeNet](https://github.com/PRBonn/lidar-bonnetal), please go show some support!
  
  ### References 
 [1] E. E. Aksoy, S. Baci, and S. Cavdar, “Salsanet: Fast road and vehicle segmentation in lidar point clouds for autonomous driving,” in IEEE Intelligent Vehicles Symposium (IV2020), 2020.
