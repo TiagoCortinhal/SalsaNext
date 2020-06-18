@@ -78,6 +78,20 @@ To train/eval you can use the following scripts:
 
 We based our code on [RangeNet](https://github.com/PRBonn/lidar-bonnetal), please go show some support!
  
+
+### Citation
+
+```
+@misc{cortinhal2020salsanext,
+    title={SalsaNext: Fast, Uncertainty-aware Semantic Segmentation of LiDAR Point Clouds for Autonomous Driving},
+    author={Tiago Cortinhal and George Tzelepis and Eren Erdal Aksoy},
+    year={2020},
+    eprint={2003.03653},
+    archivePrefix={arXiv},
+    primaryClass={cs.CV}
+}
+```
+ 
  ### References 
 [1] E. E. Aksoy, S. Baci, and S. Cavdar, “Salsanet: Fast road and vehicle segmentation in lidar point clouds for autonomous driving,” in IEEE Intelligent Vehicles Symposium (IV2020), 2020.
 
