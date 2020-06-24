@@ -18,7 +18,7 @@ class ResContextBlock(nn.Module):
         self.act2 = nn.LeakyReLU()
         self.bn1 = nn.BatchNorm2d(out_filters)
 
-        self.conv3 = nn.Conv2d(out_filters, out_filters, (3,3),dilation=2, padding=2)
+        self.conv3 = nn.Conv2d(out_filters, out_filters, (3,3),dilation=1, padding=1)
         self.act3 = nn.LeakyReLU()
         self.bn2 = nn.BatchNorm2d(out_filters)
 
@@ -179,6 +179,8 @@ class SalsaNext(nn.Module):
         self.downCntx = ResContextBlock(5, 32)
         self.downCntx2 = ResContextBlock(32, 32)
         self.downCntx3 = ResContextBlock(32, 32)
+        self.downCntx4 = ResContextBlock(32, 32)
+        self.downCntx5 = ResContextBlock(32, 32)
 
         self.resBlock1 = ResBlock(32, 2 * 32, 0.2, pooling=True, drop_out=False)
         self.resBlock2 = ResBlock(2 * 32, 2 * 2 * 32, 0.2, pooling=True)
@@ -197,6 +199,8 @@ class SalsaNext(nn.Module):
         downCntx = self.downCntx(x)
         downCntx = self.downCntx2(downCntx)
         downCntx = self.downCntx3(downCntx)
+        downCntx = self.downCntx4(downCntx)
+        downCntx = self.downCntx5(downCntx)
 
         down0c, down0b = self.resBlock1(downCntx)
         down1c, down1b = self.resBlock2(down0c)

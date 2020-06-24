@@ -20,13 +20,32 @@ from tasks.semantic.modules.ioueval import *
 from tasks.semantic.modules.SalsaNext import *
 from tasks.semantic.modules.SalsaNextUncertainty import *
 from tasks.semantic.modules.Lovasz_Softmax import Lovasz_softmax
+import tasks.semantic.modules.adf as adf
+
+def keep_variance_fn(x):
+    return x + 1e-3
+
+def one_hot_pred_from_label(y_pred, labels):
+    y_true = torch.zeros_like(y_pred)
+    ones = torch.ones_like(y_pred)
+    indexes = [l for l in labels]
+    y_true[torch.arange(labels.size(0)), indexes] = ones[torch.arange(labels.size(0)), indexes]
+
+    return y_true
 
 
-def heteroscedastic_loss(true, mean, log_var):
-    precision = torch.exp(-log_var)
-    sum = torch.sum(precision * (true - mean)**2 + log_var, 1)
-    mean = torch.mean(sum, 0)
-    return mean
+class SoftmaxHeteroscedasticLoss(torch.nn.Module):
+    def __init__(self):
+        super(SoftmaxHeteroscedasticLoss, self).__init__()
+        keep_variance_fn = lambda x: keep_variance_fn(x)
+        self.adf_softmax = adf.Softmax(dim=1, keep_variance_fn=keep_variance_fn)
+
+    def forward(self, outputs, targets, eps=1e-5):
+        mean, var = self.adf_softmax(*outputs)
+        targets = torch.nn.functional.one_hot(targets, num_classes=20).permute(0,3,1,2)
+
+        precision = 1 / (var + eps)
+        return torch.mean(0.5 * precision * (targets - mean) ** 2 + 0.5 * torch.log(var + eps))
 
 
 def save_to_log(logdir, logfile, message):
@@ -106,7 +125,7 @@ class Trainer():
             if not self.uncertainty:
                 self.model = SalsaNext(self.parser.get_n_classes())
             else:
-                self.model = SalsaNextUncertainty(self.parser.get_n_classes())
+                self.model = SalsaNextAdf(self.parser.get_n_classes())
 
         self.tb_logger = Logger(self.log + "/tb")
 
@@ -134,10 +153,12 @@ class Trainer():
 
         self.criterion = nn.NLLLoss(weight=self.loss_w).to(self.device)
         self.ls = Lovasz_softmax(ignore=0).to(self.device)
+        self.SoftmaxHeteroscedasticLoss = SoftmaxHeteroscedasticLoss().to(self.device)
         # loss as dataparallel too (more images in batch)
         if self.n_gpus > 1:
             self.criterion = nn.DataParallel(self.criterion).cuda()  # spread in gpus
             self.ls = nn.DataParallel(self.ls).cuda()
+            self.SoftmaxHeteroscedasticLoss = nn.DataParallel(self.SoftmaxHeteroscedasticLoss).cuda()
         self.optimizer = optim.SGD([{'params': self.model.parameters()}],
                                    lr=self.ARCH["train"]["lr"],
                                    momentum=self.ARCH["train"]["momentum"],
@@ -348,11 +369,10 @@ class Trainer():
 
             # compute output
             if self.uncertainty:
-                log_var, output, reg = model(in_vol)
-                mean = output.argmax(dim=1)
-                log_var = log_var.mean(dim=1)
-                hetero = heteroscedastic_loss(proj_labels.float(), mean.float(), log_var.float()).mean()
-                loss_m = criterion(torch.log(output.clamp(min=1e-8)), proj_labels) + hetero + self.ls(output, proj_labels.long()) + reg
+                output = model(in_vol)
+                output_mean, output_var = torch.log(adf.Softmax(*output))
+                hetero = self.SoftmaxHeteroscedasticLoss(output,proj_labels)
+                loss_m = criterion(output_mean.clamp(min=1e-8), proj_labels) + hetero + self.ls(output_mean, proj_labels.long())
 
                 hetero_l.update(hetero.mean().item(), in_vol.size(0))
             else:
