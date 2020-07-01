@@ -37,12 +37,11 @@ def one_hot_pred_from_label(y_pred, labels):
 class SoftmaxHeteroscedasticLoss(torch.nn.Module):
     def __init__(self):
         super(SoftmaxHeteroscedasticLoss, self).__init__()
-        keep_variance_fn = lambda x: keep_variance_fn(x)
         self.adf_softmax = adf.Softmax(dim=1, keep_variance_fn=keep_variance_fn)
 
     def forward(self, outputs, targets, eps=1e-5):
         mean, var = self.adf_softmax(*outputs)
-        targets = torch.nn.functional.one_hot(targets, num_classes=20).permute(0,3,1,2)
+        targets = torch.nn.functional.one_hot(targets, num_classes=20).permute(0,3,1,2).float()
 
         precision = 1 / (var + eps)
         return torch.mean(0.5 * precision * (targets - mean) ** 2 + 0.5 * torch.log(var + eps))
@@ -370,11 +369,12 @@ class Trainer():
             # compute output
             if self.uncertainty:
                 output = model(in_vol)
-                output_mean, output_var = torch.log(adf.Softmax(*output))
+                output_mean, output_var = adf.Softmax(dim=1, keep_variance_fn=keep_variance_fn)(*output)
                 hetero = self.SoftmaxHeteroscedasticLoss(output,proj_labels)
                 loss_m = criterion(output_mean.clamp(min=1e-8), proj_labels) + hetero + self.ls(output_mean, proj_labels.long())
 
                 hetero_l.update(hetero.mean().item(), in_vol.size(0))
+                output = output_mean
             else:
                 output = model(in_vol)
                 loss_m = criterion(torch.log(output.clamp(min=1e-8)), proj_labels) + self.ls(output, proj_labels.long())
