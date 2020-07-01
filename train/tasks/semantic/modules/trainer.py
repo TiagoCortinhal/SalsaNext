@@ -125,7 +125,7 @@ class Trainer():
             if not self.uncertainty:
                 self.model = SalsaNext(self.parser.get_n_classes())
             else:
-                self.model = SalsaNextAdf(self.parser.get_n_classes())
+                self.model = SalsaNextUncertainty(self.parser.get_n_classes())
 
         self.tb_logger = Logger(self.log + "/tb")
 
