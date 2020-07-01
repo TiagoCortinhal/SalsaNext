@@ -18,7 +18,7 @@ from common.sync_batchnorm.batchnorm import convert_model
 from common.warmupLR import *
 from tasks.semantic.modules.ioueval import *
 from tasks.semantic.modules.SalsaNext import *
-from tasks.semantic.modules.SalsaNextUncertainty import *
+from tasks.semantic.modules.SalsaNextAdf import *
 from tasks.semantic.modules.Lovasz_Softmax import Lovasz_softmax
 import tasks.semantic.modules.adf as adf
 

@@ -11,7 +11,7 @@ import yaml
 from tasks.semantic.modules.trainer import *
 from pip._vendor.distlib.compat import raw_input
 
-from tasks.semantic.modules.SalsaNextUncertainty import *
+from tasks.semantic.modules.SalsaNextAdf import *
 from tasks.semantic.modules.SalsaNext import *
 #from tasks.semantic.modules.save_dataset_projected import *
 import math
