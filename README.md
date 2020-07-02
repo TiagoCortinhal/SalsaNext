@@ -32,7 +32,7 @@ To train/eval you can use the following scripts:
      * ```-l [String]```: Path to the main log folder
      * ```-n [String]```: additional name for the experiment
      * ```-c [String]```: GPUs to use (default ```no gpu```)
-     * ```-u [String]```: If you want to train an Uncertainty version of SalsaNext (default ```false```)
+     * ```-u [String]```: If you want to train an Uncertainty version of SalsaNext (default ```false```) [Experimental: tests done so with uncertainty far used pretrained SalsaNext with [Deep Uncertainty Estimation](https://github.com/uzh-rpg/deep_uncertainty_estimation)]
    * For example if you have the dataset at ``/dataset`` the architecture config file in ``/salsanext.yml``
    and you want to save your logs to ```/logs``` to train "salsanext" with 2 GPUs with id 3 and 4:
      * ```./train.sh -d /dataset -a /salsanext.yml -m salsanext -l /logs -c 3,4```
