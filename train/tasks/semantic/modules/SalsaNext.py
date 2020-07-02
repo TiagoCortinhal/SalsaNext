@@ -6,7 +6,6 @@ import __init__ as booger
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tasks.semantic.modules.ConcreteDropout import ConcreteDropoutConvolutional
 
 class ResContextBlock(nn.Module):
     def __init__(self, in_filters, out_filters):
