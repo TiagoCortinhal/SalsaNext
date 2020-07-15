@@ -36,7 +36,23 @@ from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.conv import _ConvTransposeMixin
 from torch.nn.modules.utils import _pair
 
+def resize2D(inputs, size_targets, mode="bilinear"):
+    size_inputs = [inputs.size(2), inputs.size(3)]
 
+    if all([size_inputs == size_targets]):
+        return inputs  # nothing to do
+    elif any([size_targets < size_inputs]):
+        resized = F.adaptive_avg_pool2d(inputs, size_targets)  # downscaling
+    else:
+        resized = F.upsample(inputs, size=size_targets, mode=mode)  # upsampling
+
+    # correct scaling
+    return resized
+
+
+def resize2D_as(inputs, output_as, mode="bilinear"):
+    size_targets = [output_as.size(2), output_as.size(3)]
+    return resize2D(inputs, size_targets, mode=mode)
 
 
 def normcdf(value, mu=0.0, stddev=1.0):
