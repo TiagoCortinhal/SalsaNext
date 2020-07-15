@@ -449,3 +449,4 @@ class Sequential(nn.Module):
             inputs, inputs_variance = module(inputs, inputs_variance)
 
         return inputs, inputs_variance
+
