@@ -528,7 +528,7 @@ class Trainer():
                     log_out = torch.log(output.clamp(min=1e-8))
                     mean = output.argmax(dim=1)
                     log_var = log_var.mean(dim=1)
-                    hetero = heteroscedastic_loss(proj_labels.float(), mean.float(), log_var.float()).mean()
+                    hetero = self.SoftmaxHeteroscedasticLoss(mean.float(),proj_labels.float()).mean()
                     jacc = self.ls(output, proj_labels)
                     wce = criterion(log_out, proj_labels)
                     loss = wce + jacc

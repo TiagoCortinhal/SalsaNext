@@ -156,6 +156,7 @@ class User():
 
             log_var2, proj_output2 = self.model(proj_in)
             proj_output = proj_output_r.var(dim=0, keepdim=True).mean(dim=1)
+            proj_argmax = proj_output2[0].argmax(dim=0)
             log_var2 = log_var_r.var(dim=0, keepdim=True).mean(dim=1)
             if self.post:
                 # knn postproc
