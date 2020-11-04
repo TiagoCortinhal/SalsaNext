@@ -20,7 +20,7 @@ The up-to-date scores can be found in the Semantic-Kitti [page](http://semantic-
 ## How to use the code
 
 First create the anaconda env with:
-```conda env create -f salsanext.yml``` then activate the environment with ```conda activate salsanext```.
+```conda env create -f salsanext_cuda10.yml --name salsanext``` then activate the environment with ```conda activate salsanext```.
 
 To train/eval you can use the following scripts:
 
