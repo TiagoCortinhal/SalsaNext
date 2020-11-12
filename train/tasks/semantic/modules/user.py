@@ -148,13 +148,13 @@ class User():
 
         #compute output
         if self.uncertainty:
-            log_var_r, proj_output_r = self.model(proj_in)
+            proj_output_r,log_var_r = self.model(proj_in)
             for i in range(self.mc):
                 log_var, proj_output = self.model(proj_in)
                 log_var_r = torch.cat((log_var, log_var_r))
                 proj_output_r = torch.cat((proj_output, proj_output_r))
 
-            log_var2, proj_output2 = self.model(proj_in)
+            proj_output2,log_var2 = self.model(proj_in)
             proj_output = proj_output_r.var(dim=0, keepdim=True).mean(dim=1)
             log_var2 = log_var_r.var(dim=0, keepdim=True).mean(dim=1)
             if self.post:
