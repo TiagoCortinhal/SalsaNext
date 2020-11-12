@@ -134,7 +134,7 @@ if __name__ == '__main__':
 
     # create log folder
     try:
-        if FLAGS.pretrained is "":
+        if FLAGS.pretrained == "":
             FLAGS.pretrained = None
             if os.path.isdir(FLAGS.log):
                 if os.listdir(FLAGS.log):

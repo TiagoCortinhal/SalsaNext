@@ -76,7 +76,7 @@ if __name__ == '__main__':
     print("log", FLAGS.log)
     print("model", FLAGS.model)
     print("Uncertainty", FLAGS.uncertainty)
-    print("Monte Carlo Sampling", FLAGS.mc)
+    print("Monte Carlo Sampling", FLAGS.monte_carlo)
     print("infering", FLAGS.split)
     print("----------\n")
     #print("Commit hash (training version): ", str(
@@ -140,5 +140,5 @@ if __name__ == '__main__':
         quit()
 
     # create user and infer dataset
-    user = User(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.model,FLAGS.split,FLAGS.uncertainty,FLAGS.mc)
+    user = User(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.model,FLAGS.split,FLAGS.uncertainty,FLAGS.monte_carlo)
     user.infer()
