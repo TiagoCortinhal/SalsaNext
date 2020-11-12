@@ -17,7 +17,7 @@ import os
 import numpy as np
 
 from tasks.semantic.modules.SalsaNext import *
-from tasks.semantic.modules.SalsaNextAdf import *
+from tasks.semantic.modules.SalsaNextUncertainty import *
 from tasks.semantic.postproc.KNN import KNN
 
 
@@ -156,7 +156,6 @@ class User():
 
             proj_output2,log_var2 = self.model(proj_in)
             proj_output = proj_output_r.var(dim=0, keepdim=True).mean(dim=1)
-            proj_argmax = proj_output2[0].argmax(dim=0)
             log_var2 = log_var_r.var(dim=0, keepdim=True).mean(dim=1)
             if self.post:
                 # knn postproc
