@@ -119,7 +119,8 @@ class User():
 
   def infer_subset(self, loader, to_orig_fn,cnn,knn):
     # switch to evaluate mode
-    self.model.eval()
+    if not self.uncertainty:
+      self.model.eval()
     total_time=0
     total_frames=0
     # empty the cache to infer in high res
@@ -148,7 +149,6 @@ class User():
 
         #compute output
         if self.uncertainty:
-            self.model.train()
             proj_output_r,log_var_r = self.model(proj_in)
             for i in range(self.mc):
                 log_var, proj_output = self.model(proj_in)
