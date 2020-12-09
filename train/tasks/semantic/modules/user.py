@@ -148,6 +148,7 @@ class User():
 
         #compute output
         if self.uncertainty:
+            self.model.train()
             proj_output_r,log_var_r = self.model(proj_in)
             for i in range(self.mc):
                 log_var, proj_output = self.model(proj_in)
@@ -156,7 +157,7 @@ class User():
 
             proj_output2,log_var2 = self.model(proj_in)
             proj_output = proj_output_r.var(dim=0, keepdim=True).mean(dim=1)
-            log_var2 = log_var_r.var(dim=0, keepdim=True).mean(dim=1)
+            log_var2 = log_var_r.mean(dim=0, keepdim=True).mean(dim=1)
             if self.post:
                 # knn postproc
                 unproj_argmax = self.post(proj_range,
