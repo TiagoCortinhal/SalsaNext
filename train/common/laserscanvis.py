@@ -131,7 +131,7 @@ class LaserScanVis:
       self.scan.colorize()
 
     # then change names
-    title = "scan " + str(self.offset) + " of " + str(len(self.scan_names))
+    title = "scan " + str(self.offset) + " of " + str(len(self.scan_names)-1)
     self.canvas.title = title
     self.img_canvas.title = title
 
