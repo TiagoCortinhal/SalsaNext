@@ -195,9 +195,13 @@ class LaserScanVis:
     self.img_canvas.events.key_press.block()
     if event.key == 'N':
       self.offset += 1
+      if self.offset >= len(self.scan_names):
+        self.offset = 0
       self.update_scan()
     elif event.key == 'B':
       self.offset -= 1
+      if self.offset <= 0:
+        self.offset = len(self.scan_names)-1
       self.update_scan()
     elif event.key == 'Q' or event.key == 'Escape':
       self.destroy()
